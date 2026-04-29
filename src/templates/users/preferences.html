@@ -150,6 +150,45 @@
         </div>
       </div>
 
+      {# Public Profile #}
+      <div class="mb-5">
+        <div class="flex items-center justify-between p-3 bg-[#39404b] rounded-md">
+          <div class="flex-1">
+            <div class="flex items-center text-gray-200 mb-1">
+              {% include "app/icons/globe.svg" with classes="w-5 h-5 mr-2" %}
+              <span class="text-sm font-medium">Public Profile</span>
+            </div>
+            <p class="text-xs text-gray-400 ml-7">
+              Allow anyone with the link to view your media tracking profile.
+            </p>
+            {% if user.public_profile %}
+              <div class="mt-2 ml-7 flex items-center gap-2"
+                   x-data="{ copied: false }">
+                <input type="text"
+                       readonly
+                       value="{{ public_profile_url }}"
+                       class="flex-1 p-2 bg-[#2a2f35] rounded-md text-gray-300 text-xs border border-gray-600 select-all"
+                       @click="$el.select()">
+                <button type="button"
+                        class="p-2 bg-[#2a2f35] rounded-md border border-gray-600 text-gray-300 hover:text-white hover:bg-[#454d5a] transition-colors cursor-pointer"
+                        @click="navigator.clipboard.writeText('{{ public_profile_url }}'); copied = true; setTimeout(() => copied = false, 2000)">
+                  <span x-show="!copied">{% include "app/icons/copy.svg" with classes="w-4 h-4" %}</span>
+                  <span x-show="copied" x-cloak>{% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-emerald-400" %}</span>
+                </button>
+              </div>
+            {% endif %}
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer ml-4">
+            <input class="sr-only peer"
+                   type="checkbox"
+                   name="public_profile"
+                   {% if user.public_profile %}checked{% endif %}>
+            <div class="w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-px after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all peer-checked:bg-indigo-600">
+            </div>
+          </label>
+        </div>
+      </div>
+
       {# Date Format #}
       <div class="mb-5">
         <div class="flex items-center justify-between p-3 bg-[#39404b] rounded-md">

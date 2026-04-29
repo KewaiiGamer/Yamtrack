@@ -188,6 +188,8 @@ def sources(media_type):
 @register.simple_tag
 def get_search_media_types(user):
     """Return available media types for search based on user preferences."""
+    if not hasattr(user, "get_enabled_media_types"):
+        return []
     enabled_types = user.get_enabled_media_types()
 
     # Filter and format the types for search
@@ -204,6 +206,8 @@ def get_search_media_types(user):
 @register.simple_tag
 def get_sidebar_media_types(user):
     """Return available media types for sidebar navigation based on user preferences."""
+    if not hasattr(user, "get_enabled_media_types"):
+        return []
     enabled_types = user.get_enabled_media_types()
 
     # Format the types for sidebar

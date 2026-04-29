@@ -35,4 +35,9 @@ urlpatterns = [
         views.update_plex_usernames,
         name="update_plex_usernames",
     ),
+    path(
+        "profile/<str:username>/",
+        views.public_profile,
+        name="public_profile",
+    ),
 ]

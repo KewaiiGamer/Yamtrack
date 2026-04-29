@@ -1,0 +1,69 @@
+{% load app_tags %}
+
+{% for media in media_list %}
+  <div {% if forloop.last and media_list.has_next %}
+         hx-get="{% url 'public_profile' profile_user.username %}?media_type={{ media_type }}&status={{ current_status }}&sort={{ current_sort }}&page={{ media_list.next_page_number }}"
+         hx-trigger="revealed threshold:200px"
+         hx-swap="afterend"
+       {% endif %}>
+    <div class="bg-[#2a2f35] rounded-lg overflow-hidden shadow-lg relative">
+      <div class="relative">
+        <a href="{{ media.item|media_url }}">
+          <img alt="{{ media.item }}"
+               class="lazyload w-full aspect-2/3 bg-[#3e454d] {% if media.item.image != IMG_NONE %}object-cover{% endif %}"
+               data-src="{{ media.item.image }}"
+               src="{{ IMG_NONE }}">
+        </a>
+
+        {% if media.status %}
+          <div class="absolute top-2 left-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center shadow-md">
+            {% if media.status == Status.COMPLETED.value %}
+              <div class="w-4 h-4 {{ Status.COMPLETED.value|status_color }}">
+                {% include "app/icons/states/completed.svg" %}
+              </div>
+            {% elif media.status == Status.IN_PROGRESS.value %}
+              <div class="w-4 h-4 {{ Status.IN_PROGRESS.value|status_color }}">
+                {% include "app/icons/states/in-progress.svg" %}
+              </div>
+            {% elif media.status == Status.PAUSED.value %}
+              <div class="w-4 h-4 {{ Status.PAUSED.value|status_color }}">
+                {% include "app/icons/states/paused.svg" %}
+              </div>
+            {% elif media.status == Status.PLANNING.value %}
+              <div class="w-4 h-4 {{ Status.PLANNING.value|status_color }}">
+                {% include "app/icons/states/planning.svg" %}
+              </div>
+            {% elif media.status == Status.DROPPED.value %}
+              <div class="w-4 h-4 {{ Status.DROPPED.value|status_color }}">
+                {% include "app/icons/states/dropped.svg" %}
+              </div>
+            {% endif %}
+          </div>
+        {% endif %}
+
+        {% if media.score and media.score > 0 %}
+          <div class="absolute top-2 right-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center shadow-md">
+            {% include "app/icons/star.svg" with classes="w-4 h-4 text-yellow-400 mr-1 fill-current" %}
+            <span class="text-sm text-white">{{ media.formatted_score }}</span>
+          </div>
+        {% endif %}
+
+        {% if media.progress and media_type != MediaTypes.MOVIE.value %}
+          <div class="absolute bottom-2 left-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center shadow-md">
+            <span class="text-sm text-white">
+              {{ media.formatted_progress }}
+              {% if media.max_progress %}/ {{ media.max_progress }}{% endif %}
+            </span>
+          </div>
+        {% endif %}
+      </div>
+      <div class="p-2">
+        <p class="text-sm text-gray-200 truncate" title="{{ media.item.title }}">{{ media.item.title }}</p>
+      </div>
+    </div>
+  </div>
+{% empty %}
+  <div class="col-span-full text-center py-12 text-gray-400">
+    <p class="text-lg">No media found.</p>
+  </div>
+{% endfor %}
