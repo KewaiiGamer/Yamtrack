@@ -2,9 +2,11 @@
 
 {% for media in media_list %}
   <div {% if forloop.last and media_list.has_next %}
-         hx-get="{% url 'public_profile' profile_user.username %}?media_type={{ media_type }}&status={{ current_status }}&sort={{ current_sort }}&page={{ media_list.next_page_number }}"
+         hx-get="{% url 'public_profile' profile_user.username %}?page={{ media_list.next_page_number }}"
          hx-trigger="revealed threshold:200px"
          hx-swap="afterend"
+         hx-include="#filter-form"
+         hx-indicator="#loading-indicator"
        {% endif %}>
     <div class="bg-[#2a2f35] rounded-lg overflow-hidden shadow-lg relative">
       <div class="relative">

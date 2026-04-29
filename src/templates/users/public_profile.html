@@ -45,70 +45,121 @@
       </div>
     </div>
 
-    {# Media Type Tabs #}
-    <div class="flex flex-wrap gap-2">
-      {% for mt in display_types %}
-        <a href="{% url 'public_profile' profile_user.username %}?media_type={{ mt }}&status={{ current_status }}&sort={{ current_sort }}"
-           class="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors {% if mt == media_type %}bg-indigo-600 text-white{% else %}bg-[#2a2f35] text-gray-400 hover:bg-[#39404b] hover:text-white{% endif %}">
-          {% icon mt is_active=False %}
-          <span>{{ mt|media_type_readable_plural }}</span>
-        </a>
+    <div x-data="{ media_type: '{{ media_type }}', sort: '{{ current_sort }}', status: '{{ current_status }}', statusLabels: {
+      {% for value, label in status_choices %}
+        '{{ value }}': '{{ label }}'{% if not forloop.last %},{% endif %}
       {% endfor %}
-    </div>
+      }, sortLabels: {
+      {% for value, label in sort_choices %}
+        '{{ value }}': '{{ label }}'{% if not forloop.last %},{% endif %}
+      {% endfor %}
+      } }">
 
-    {# Filters #}
-    <div class="flex flex-wrap items-center gap-3">
-      {# Status Filter #}
-      <div class="relative" x-data="{ open: false }">
-        <button @click="open = !open"
-                @click.outside="open = false"
-                class="flex items-center gap-2 rounded-md border border-gray-700 bg-[#39404b] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#454d5a] cursor-pointer">
-          {% include "app/icons/funnel.svg" with classes="w-4 h-4" %}
-          <span>{{ current_status }}</span>
-          {% include "app/icons/chevron-down.svg" with classes="w-4 h-4 text-gray-400" %}
-        </button>
-        <div x-show="open"
-             x-transition
-             class="absolute left-0 z-10 mt-2 w-44 overflow-hidden rounded-md border border-gray-700 bg-[#39404b] py-1 shadow-lg">
-          {% for value, label in status_choices %}
-            <a href="{% url 'public_profile' profile_user.username %}?media_type={{ media_type }}&status={{ value }}&sort={{ current_sort }}"
-               class="block w-full px-4 py-2 text-left text-sm transition-colors {% if current_status == value %}bg-indigo-600 text-white font-medium{% else %}text-gray-300 hover:bg-[#454d5a] hover:text-white{% endif %}">
-              {{ label }}
-            </a>
-          {% endfor %}
+      {# Hidden form to bridge Alpine state to HTMX #}
+      <form id="filter-form" class="hidden">
+        <input type="hidden" name="media_type" x-model="media_type">
+        <input type="hidden" name="sort" x-model="sort">
+        <input type="hidden" name="status" x-model="status">
+      </form>
+
+      {# Media Type Tabs #}
+      <div class="flex flex-wrap gap-2 mb-6">
+        {% for mt in display_types %}
+          <button hx-get="{% url 'public_profile' profile_user.username %}"
+                  hx-target="#profile-media-grid"
+                  hx-include="#filter-form"
+                  hx-indicator="#loading-indicator"
+                  @click="media_type = '{{ mt }}'; status = 'All'"
+                  type="button"
+                  class="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer"
+                  :class="media_type === '{{ mt }}' ? 'bg-indigo-600 text-white' : 'bg-[#2a2f35] text-gray-400 hover:bg-[#39404b] hover:text-white'">
+            {% icon mt is_active=False %}
+            <span>{{ mt|media_type_readable_plural }}</span>
+          </button>
+        {% endfor %}
+      </div>
+
+      {# Filters #}
+      <div class="flex flex-wrap items-center gap-3 mb-6">
+        {# Status Filter #}
+        <div class="relative" x-data="{ open: false }">
+          <button @click="open = !open"
+                  type="button"
+                  class="flex items-center gap-2 rounded-md border border-gray-700 bg-[#39404b] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#454d5a] cursor-pointer">
+            {% include "app/icons/funnel.svg" with classes="w-4 h-4" %}
+            <span x-text="statusLabels[status] || status"></span>
+            {% include "app/icons/chevron-down.svg" with classes="w-4 h-4 text-gray-400" %}
+          </button>
+          <div x-show="open"
+               x-cloak
+               @click.outside="open = false"
+               x-transition:enter="transition ease-out duration-100"
+               x-transition:enter-start="transform opacity-0 scale-95"
+               x-transition:enter-end="transform opacity-100 scale-100"
+               x-transition:leave="transition ease-in duration-75"
+               x-transition:leave-start="transform opacity-100 scale-100"
+               x-transition:leave-end="transform opacity-0 scale-95"
+               class="absolute left-0 z-10 mt-2 w-44 overflow-hidden rounded-md border border-gray-700 bg-[#39404b] py-1 shadow-lg">
+            {% for value, label in status_choices %}
+              <button hx-get="{% url 'public_profile' profile_user.username %}"
+                      hx-target="#profile-media-grid"
+                      hx-include="#filter-form"
+                      hx-indicator="#loading-indicator"
+                      @click="status = '{{ value }}'; open = false"
+                      type="button"
+                      class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
+                      :class="status === '{{ value }}' ? 'bg-indigo-600 text-white font-medium' : 'text-gray-300 hover:bg-[#454d5a] hover:text-white'">
+                {{ label }}
+              </button>
+            {% endfor %}
+          </div>
+        </div>
+
+        {# Sort Filter #}
+        <div class="relative" x-data="{ open: false }">
+          <button @click="open = !open"
+                  type="button"
+                  class="flex items-center gap-2 rounded-md border border-gray-700 bg-[#39404b] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#454d5a] cursor-pointer">
+            {% include "app/icons/arrows-up-down.svg" with classes="w-4 h-4" %}
+            <span x-text="sortLabels[sort] || sort"></span>
+            {% include "app/icons/chevron-down.svg" with classes="w-4 h-4 text-gray-400" %}
+          </button>
+          <div x-show="open"
+               x-cloak
+               @click.outside="open = false"
+               x-transition:enter="transition ease-out duration-100"
+               x-transition:enter-start="transform opacity-0 scale-95"
+               x-transition:enter-end="transform opacity-100 scale-100"
+               x-transition:leave="transition ease-in duration-75"
+               x-transition:leave-start="transform opacity-100 scale-100"
+               x-transition:leave-end="transform opacity-0 scale-95"
+               class="absolute left-0 z-10 mt-2 w-44 overflow-hidden rounded-md border border-gray-700 bg-[#39404b] py-1 shadow-lg">
+            {% for value, label in sort_choices %}
+              <button hx-get="{% url 'public_profile' profile_user.username %}"
+                      hx-target="#profile-media-grid"
+                      hx-include="#filter-form"
+                      hx-indicator="#loading-indicator"
+                      @click="sort = '{{ value }}'; open = false"
+                      type="button"
+                      class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
+                      :class="sort === '{{ value }}' ? 'bg-indigo-600 text-white font-medium' : 'text-gray-300 hover:bg-[#454d5a] hover:text-white'">
+                {{ label }}
+              </button>
+            {% endfor %}
+          </div>
         </div>
       </div>
 
-      {# Sort Filter #}
-      <div class="relative" x-data="{ open: false }">
-        <button @click="open = !open"
-                @click.outside="open = false"
-                class="flex items-center gap-2 rounded-md border border-gray-700 bg-[#39404b] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#454d5a] cursor-pointer">
-          {% include "app/icons/arrows-up-down.svg" with classes="w-4 h-4" %}
-          <span>{{ current_sort|no_underscore|title }}</span>
-          {% include "app/icons/chevron-down.svg" with classes="w-4 h-4 text-gray-400" %}
-        </button>
-        <div x-show="open"
-             x-transition
-             class="absolute left-0 z-10 mt-2 w-44 overflow-hidden rounded-md border border-gray-700 bg-[#39404b] py-1 shadow-lg">
-          {% for value, label in sort_choices %}
-            <a href="{% url 'public_profile' profile_user.username %}?media_type={{ media_type }}&status={{ current_status }}&sort={{ value }}"
-               class="block w-full px-4 py-2 text-left text-sm transition-colors {% if current_sort == value %}bg-indigo-600 text-white font-medium{% else %}text-gray-300 hover:bg-[#454d5a] hover:text-white{% endif %}">
-              {{ label }}
-            </a>
-          {% endfor %}
-        </div>
+      {# Media Grid #}
+      <div class="media-grid" id="profile-media-grid">
+        {% include "users/components/public_profile_grid.html" %}
       </div>
 
-      {# Item count #}
-      <span class="text-sm text-gray-400">
-        {{ media_list.paginator.count }} {{ media_type_plural }}
-      </span>
-    </div>
-
-    {# Media Grid #}
-    <div class="media-grid" id="profile-media-grid">
-      {% include "users/components/public_profile_grid.html" %}
+      <div id="loading-indicator" class="htmx-indicator text-center pt-8">
+        <div class="inline-flex justify-center items-center">
+          <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
+        </div>
+      </div>
     </div>
   </div>
 {% endblock content %}
