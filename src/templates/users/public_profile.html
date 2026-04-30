@@ -45,7 +45,7 @@
       </div>
     </div>
 
-    <div x-data="{ media_type: '{{ media_type }}', sort: '{{ current_sort }}', status: '{{ current_status }}', statusLabels: {
+    <div x-data="{ media_type: '{{ media_type }}', sort: '{{ current_sort }}', status: '{{ current_status }}', layout: '{{ current_layout }}', statusLabels: {
       {% for value, label in status_choices %}
         '{{ value }}': '{{ label }}'{% if not forloop.last %},{% endif %}
       {% endfor %}
@@ -60,13 +60,14 @@
         <input type="hidden" name="media_type" x-model="media_type">
         <input type="hidden" name="sort" x-model="sort">
         <input type="hidden" name="status" x-model="status">
+        <input type="hidden" name="layout" x-model="layout">
       </form>
 
       {# Media Type Tabs #}
       <div class="flex flex-wrap gap-2 mb-6">
         {% for mt in display_types %}
           <button hx-get="{% url 'public_profile' profile_user.username %}"
-                  hx-target="#profile-media-grid"
+                  hx-target="#profile-media-container"
                   hx-include="#filter-form"
                   hx-indicator="#loading-indicator"
                   @click="media_type = '{{ mt }}'; status = 'All'"
@@ -102,7 +103,7 @@
                class="absolute left-0 z-10 mt-2 w-44 overflow-hidden rounded-md border border-gray-700 bg-[#39404b] py-1 shadow-lg">
             {% for value, label in status_choices %}
               <button hx-get="{% url 'public_profile' profile_user.username %}"
-                      hx-target="#profile-media-grid"
+                      hx-target="#profile-media-container"
                       hx-include="#filter-form"
                       hx-indicator="#loading-indicator"
                       @click="status = '{{ value }}'; open = false"
@@ -136,7 +137,7 @@
                class="absolute left-0 z-10 mt-2 w-44 overflow-hidden rounded-md border border-gray-700 bg-[#39404b] py-1 shadow-lg">
             {% for value, label in sort_choices %}
               <button hx-get="{% url 'public_profile' profile_user.username %}"
-                      hx-target="#profile-media-grid"
+                      hx-target="#profile-media-container"
                       hx-include="#filter-form"
                       hx-indicator="#loading-indicator"
                       @click="sort = '{{ value }}'; open = false"
@@ -148,12 +149,32 @@
             {% endfor %}
           </div>
         </div>
+
+        {# Layout Toggle #}
+        <div class="ml-auto flex rounded-md overflow-hidden border border-gray-700">
+          <a href="{% url 'public_profile' profile_user.username %}?media_type={{ media_type }}&sort={{ current_sort }}&status={{ current_status }}&layout=grid"
+             class="p-2 cursor-pointer"
+             :class="layout === 'grid' ? 'bg-indigo-600 text-white' : 'bg-[#39404b] hover:bg-[#454d5a]'"
+             title="Grid View"
+             @click="layout = 'grid'">{% include "app/icons/four-square.svg" with classes="w-5 h-5" %}</a>
+          <a href="{% url 'public_profile' profile_user.username %}?media_type={{ media_type }}&sort={{ current_sort }}&status={{ current_status }}&layout=table"
+             class="p-2 cursor-pointer"
+             :class="layout === 'table' ? 'bg-indigo-600 text-white' : 'bg-[#39404b] hover:bg-[#454d5a]'"
+             title="Table View"
+             @click="layout = 'table'">{% include "app/icons/table.svg" with classes="w-5 h-5" %}</a>
+        </div>
       </div>
 
-      {# Media Grid #}
-      <div class="media-grid" id="profile-media-grid">
-        {% include "users/components/public_profile_grid.html" %}
-      </div>
+      {# Media Content #}
+      {% if current_layout == "grid" %}
+        <div class="media-grid" id="profile-media-container">
+          {% include "users/components/public_profile_grid.html" %}
+        </div>
+      {% else %}
+        <div class="bg-[#2a2f35] p-4 rounded-lg overflow-hidden max-w-[calc(100svw-4rem)] overflow-x-scroll" id="profile-media-container">
+          {% include "users/components/public_profile_table.html" %}
+        </div>
+      {% endif %}
 
       <div id="loading-indicator" class="htmx-indicator text-center pt-8">
         <div class="inline-flex justify-center items-center">

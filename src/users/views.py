@@ -408,6 +408,7 @@ def public_profile(request, username):
     media_type = request.GET.get("media_type")
     status_filter = request.GET.get("status", MediaStatusChoices.ALL)
     sort_filter = request.GET.get("sort", MediaSortChoices.SCORE)
+    layout = request.GET.get("layout", "grid")
     page = request.GET.get("page", 1)
 
     enabled_types = profile_user.get_enabled_media_types()
@@ -429,6 +430,8 @@ def public_profile(request, username):
         sort_filter = MediaSortChoices.SCORE
     if status_filter not in MediaStatusChoices.values:
         status_filter = MediaStatusChoices.ALL
+    if layout not in ("grid", "table"):
+        layout = "grid"
 
     media_queryset = BasicMedia.objects.get_media_list(
         user=profile_user,
@@ -511,6 +514,7 @@ def public_profile(request, username):
         "display_types": display_types,
         "current_sort": sort_filter,
         "current_status": status_filter,
+        "current_layout": layout,
         "sort_choices": MediaSortChoices.choices,
         "status_choices": MediaStatusChoices.choices,
         "stats": stats,
@@ -523,6 +527,8 @@ def public_profile(request, username):
     }
 
     if request.headers.get("HX-Request"):
+        if layout == "table":
+            return render(request, "users/components/public_profile_table.html", context)
         return render(request, "users/components/public_profile_grid.html", context)
 
     return render(request, "users/public_profile.html", context)
