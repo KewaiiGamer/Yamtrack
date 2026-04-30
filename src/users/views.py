@@ -17,8 +17,9 @@ from django.urls import reverse
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 from django_celery_beat.models import PeriodicTask
 
-from app.models import BasicMedia, Episode, Item, MediaTypes, Status
-from app.providers import tmdb
+from app.models import BasicMedia, Episode, Item, MediaTypes, Sources, Status
+from app.providers import services, tmdb
+from app import helpers
 from app.templatetags import app_tags
 from users.forms import NotificationSettingsForm, PasswordChangeForm, UserUpdateForm
 from users.models import (
@@ -525,3 +526,102 @@ def public_profile(request, username):
         return render(request, "users/components/public_profile_grid.html", context)
 
     return render(request, "users/public_profile.html", context)
+
+
+@login_not_required
+@require_GET
+def public_media_details(request, username, source, media_type, media_id, title):  # noqa: ARG001
+    """Display a read-only media detail page for a public profile."""
+    profile_user = get_object_or_404(User, username=username)
+    if not profile_user.public_profile:
+        raise Http404
+
+    media_metadata = services.get_media_metadata(media_type, media_id, source)
+
+    user_medias = BasicMedia.objects.filter_media_prefetch(
+        profile_user,
+        media_id,
+        media_type,
+        source,
+    )
+    current_instance = user_medias[0] if user_medias else None
+
+    # Enrich related items with user tracking data
+    if media_metadata.get("related"):
+        _fake_request = type("_R", (), {"user": profile_user})()
+        for section_name, related_items in media_metadata["related"].items():
+            if related_items:
+                media_metadata["related"][section_name] = (
+                    helpers.enrich_items_with_user_data(
+                        _fake_request, related_items, section_name,
+                    )
+                )
+
+    context = {
+        "profile_user": profile_user,
+        "media": media_metadata,
+        "media_type": media_type,
+        "user_medias": user_medias,
+        "current_instance": current_instance,
+    }
+    return render(request, "users/public_media_details.html", context)
+
+
+@login_not_required
+@require_GET
+def public_season_details(request, username, source, media_id, title, season_number):  # noqa: ARG001
+    """Display a read-only season detail page for a public profile."""
+    profile_user = get_object_or_404(User, username=username)
+    if not profile_user.public_profile:
+        raise Http404
+
+    tv_with_seasons_metadata = services.get_media_metadata(
+        "tv_with_seasons",
+        media_id,
+        source,
+        [season_number],
+    )
+    season_metadata = tv_with_seasons_metadata[f"season/{season_number}"]
+
+    user_medias = BasicMedia.objects.filter_media_prefetch(
+        profile_user,
+        media_id,
+        MediaTypes.SEASON.value,
+        source,
+        season_number=season_number,
+    )
+    current_instance = user_medias[0] if user_medias else None
+    episodes_in_db = current_instance.episodes.all() if current_instance else []
+
+    from app.providers import manual as manual_provider
+    if source == Sources.MANUAL.value:
+        season_metadata["episodes"] = manual_provider.process_episodes(
+            season_metadata,
+            episodes_in_db,
+        )
+    else:
+        season_metadata["episodes"] = tmdb.process_episodes(
+            season_metadata,
+            episodes_in_db,
+        )
+
+    # Enrich related items with user tracking data
+    if season_metadata.get("related"):
+        _fake_request = type("_R", (), {"user": profile_user})()
+        for section_name, related_items in season_metadata["related"].items():
+            if related_items:
+                season_metadata["related"][section_name] = (
+                    helpers.enrich_items_with_user_data(
+                        _fake_request, related_items, section_name,
+                    )
+                )
+
+    context = {
+        "profile_user": profile_user,
+        "media": season_metadata,
+        "tv": tv_with_seasons_metadata,
+        "media_type": MediaTypes.SEASON.value,
+        "user_medias": user_medias,
+        "current_instance": current_instance,
+    }
+    return render(request, "users/public_media_details.html", context)

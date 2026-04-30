@@ -1,0 +1,60 @@
+{% load app_tags %}
+
+<div class="bg-[#2a2f35] rounded-lg overflow-hidden shadow-lg relative {% if active %}ring-[1.5px] ring-slate-400{% endif %}">
+  <div class="relative">
+    <a href="{% public_media_url item profile_username %}">
+      <img alt="{{ title }}"
+           class="lazyload w-full h-48 bg-[#3e454d] {% if item.image != IMG_NONE %}object-cover{% endif %}"
+           data-src="{{ item.image }}"
+           src="{{ IMG_NONE }}">
+    </a>
+
+    {% if media.status %}
+      <div class="absolute top-2 left-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center shadow-md">
+        {% if media.status == Status.COMPLETED.value %}
+          <div class="w-4 h-4 {{ Status.COMPLETED.value|status_color }}">
+            {% include "app/icons/states/completed.svg" %}
+          </div>
+        {% elif media.status == Status.IN_PROGRESS.value %}
+          <div class="w-4 h-4 {{ Status.IN_PROGRESS.value|status_color }}">
+            {% include "app/icons/states/in-progress.svg" %}
+          </div>
+        {% elif media.status == Status.PAUSED.value %}
+          <div class="w-4 h-4 {{ Status.PAUSED.value|status_color }}">
+            {% include "app/icons/states/paused.svg" %}
+          </div>
+        {% elif media.status == Status.PLANNING.value %}
+          <div class="w-4 h-4 {{ Status.PLANNING.value|status_color }}">
+            {% include "app/icons/states/planning.svg" %}
+          </div>
+        {% elif media.status == Status.DROPPED.value %}
+          <div class="w-4 h-4 {{ Status.DROPPED.value|status_color }}">
+            {% include "app/icons/states/dropped.svg" %}
+          </div>
+        {% endif %}
+      </div>
+    {% endif %}
+
+    {% if media.score|show_media_score:user %}
+      <div class="absolute top-10 left-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center shadow-md">
+        {% include "app/icons/star.svg" with classes="w-4 h-4 text-yellow-400 mr-1 fill-current" %}
+        <span class="text-sm text-white">{{ media.formatted_score }}</span>
+      </div>
+    {% endif %}
+
+    {% if media.progress and media_type != MediaTypes.MOVIE.value %}
+      <div class="absolute bottom-2 left-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center shadow-md">
+        <span class="text-sm text-white">
+          {{ media.formatted_progress }}
+          {% if media.max_progress %}/ {{ media.max_progress }}{% endif %}
+        </span>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="p-3">
+    <a href="{% public_media_url item profile_username %}"
+       class="text-sm font-semibold text-white hover:text-indigo-400 transition duration-300 line-clamp-1"
+       title="{{ title }}">{{ title }}</a>
+  </div>
+</div>

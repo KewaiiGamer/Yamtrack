@@ -10,7 +10,7 @@
        {% endif %}>
     <div class="bg-[#2a2f35] rounded-lg overflow-hidden shadow-lg relative">
       <div class="relative">
-        <a href="{{ media.item|media_url }}">
+        <a href="{% public_media_url media.item profile_user.username %}">
           <img alt="{{ media.item }}"
                class="lazyload w-full aspect-2/3 bg-[#3e454d] {% if media.item.image != IMG_NONE %}object-cover{% endif %}"
                data-src="{{ media.item.image }}"
