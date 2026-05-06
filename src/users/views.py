@@ -2,20 +2,34 @@ import logging
 
 import apprise
 from django.conf import settings
+from django.apps import apps
 from django.contrib import messages
 from django.contrib.auth import update_session_auth_hash
+from django.contrib.auth.decorators import login_not_required
 from django.core.cache import cache
+from django.core.paginator import Paginator
 from django.db import IntegrityError
-from django.db.models import Q
+from django.db.models import Avg, Count, Q
+from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.defaultfilters import pluralize
+from django.urls import reverse
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 from django_celery_beat.models import PeriodicTask
 
-from app.models import Item, MediaTypes
-from app.providers import tmdb
+from app.models import BasicMedia, Episode, Item, MediaTypes, Sources, Status
+from app.providers import services, tmdb
+from app import helpers
+from app.templatetags import app_tags
 from users.forms import NotificationSettingsForm, PasswordChangeForm, UserUpdateForm
-from users.models import DateFormatChoices, QuickWatchDateChoices, TimeFormatChoices
+from users.models import (
+    DateFormatChoices,
+    MediaSortChoices,
+    MediaStatusChoices,
+    QuickWatchDateChoices,
+    TimeFormatChoices,
+    User,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -217,6 +231,9 @@ def preferences(request):
     watch_provider_regions = tmdb.watch_provider_regions()
 
     if request.method == "GET":
+        public_profile_url = request.build_absolute_uri(
+            reverse("public_profile", args=[request.user.username]),
+        )
         return render(
             request,
             "users/preferences.html",
@@ -226,6 +243,7 @@ def preferences(request):
                 "date_format_choices": DateFormatChoices.choices,
                 "time_format_choices": TimeFormatChoices.choices,
                 "watch_provider_choices": watch_provider_regions,
+                "public_profile_url": public_profile_url,
             },
         )
 
@@ -246,6 +264,7 @@ def preferences(request):
         "hide_completed_recommendations" in request.POST
     )
     request.user.hide_zero_rating = "hide_zero_rating" in request.POST
+    request.user.public_profile = "public_profile" in request.POST
     request.user.date_format = request.POST.get(
         "date_format",
         DateFormatChoices.ISO,
@@ -375,3 +394,240 @@ def clear_search_cache(request):
     )
 
     return redirect("advanced")
+
+
+@login_not_required
+@require_GET
+def public_profile(request, username):
+    """Display a user's public profile with their media tracking."""
+    profile_user = get_object_or_404(User, username=username)
+
+    if not profile_user.public_profile:
+        raise Http404
+
+    media_type = request.GET.get("media_type")
+    status_filter = request.GET.get("status", MediaStatusChoices.ALL)
+    sort_filter = request.GET.get("sort", MediaSortChoices.SCORE)
+    layout = request.GET.get("layout", "grid")
+    page = request.GET.get("page", 1)
+
+    enabled_types = profile_user.get_enabled_media_types()
+    # Exclude season/episode from the public profile tabs
+    display_types = [
+        t for t in enabled_types
+        if t not in (MediaTypes.SEASON.value, MediaTypes.EPISODE.value)
+    ]
+
+    if not display_types:
+        raise Http404
+
+    # Default to first enabled type if none specified or invalid
+    if media_type not in display_types:
+        media_type = display_types[0]
+
+    # Validate sort and status
+    if sort_filter not in MediaSortChoices.values:
+        sort_filter = MediaSortChoices.SCORE
+    if status_filter not in MediaStatusChoices.values:
+        status_filter = MediaStatusChoices.ALL
+    if layout not in ("grid", "table"):
+        layout = "grid"
+
+    media_queryset = BasicMedia.objects.get_media_list(
+        user=profile_user,
+        media_type=media_type,
+        status_filter=status_filter,
+        sort_filter=sort_filter,
+    )
+
+    items_per_page = 32
+    paginator = Paginator(media_queryset, items_per_page)
+    media_page = paginator.get_page(page)
+
+    BasicMedia.objects.annotate_max_progress(
+        media_page.object_list,
+        media_type,
+    )
+
+    # Compute profile statistics
+    stats = {}
+    for mt in display_types:
+        model = apps.get_model(app_label="app", model_name=mt)
+        qs = model.objects.filter(user=profile_user)
+        total = qs.count()
+        completed = qs.filter(status=Status.COMPLETED.value).count()
+        avg_score = qs.exclude(score__isnull=True).exclude(score=0).aggregate(
+            avg=Avg("score"),
+        )["avg"]
+        stats[mt] = {
+            "total": total,
+            "completed": completed,
+            "avg_score": round(float(avg_score), 1) if avg_score else None,
+        }
+
+    # Total episodes watched
+    episodes_watched = Episode.objects.filter(
+        related_season__user=profile_user,
+        end_date__isnull=False,
+    ).count()
+
+    # Overall average score across all types
+    score_sums = []
+    score_counts = []
+    for mt in display_types:
+        model = apps.get_model(app_label="app", model_name=mt)
+        agg = model.objects.filter(
+            user=profile_user,
+        ).exclude(score__isnull=True).exclude(score=0).aggregate(
+            avg=Avg("score"), cnt=Count("score"),
+        )
+        if agg["avg"] and agg["cnt"]:
+            score_sums.append(float(agg["avg"]) * agg["cnt"])
+            score_counts.append(agg["cnt"])
+
+    total_score_count = sum(score_counts)
+    overall_avg = (
+        round(sum(score_sums) / total_score_count, 1)
+        if total_score_count > 0 else None
+    )
+
+    total_completed = sum(s["completed"] for s in stats.values())
+    total_items = sum(s["total"] for s in stats.values())
+
+    # Watch time estimates (runtimes not stored in DB)
+    from app.models import Movie
+    completed_movies = Movie.objects.filter(
+        user=profile_user,
+        status=Status.COMPLETED.value,
+    ).count()
+    # Estimate: average movie ~2 hours
+    movie_hours = round(completed_movies * 2)
+
+    # TV watch time: episodes * average episode runtime (~30 min)
+    tv_hours = round(episodes_watched * 30 / 60)
+
+    context = {
+        "profile_user": profile_user,
+        "media_type": media_type,
+        "media_type_plural": app_tags.media_type_readable_plural(media_type).lower(),
+        "media_list": media_page,
+        "display_types": display_types,
+        "current_sort": sort_filter,
+        "current_status": status_filter,
+        "current_layout": layout,
+        "sort_choices": MediaSortChoices.choices,
+        "status_choices": MediaStatusChoices.choices,
+        "stats": stats,
+        "episodes_watched": episodes_watched,
+        "overall_avg_score": overall_avg,
+        "total_completed": total_completed,
+        "total_items": total_items,
+        "movie_hours": movie_hours,
+        "tv_hours": tv_hours,
+    }
+
+    if request.headers.get("HX-Request"):
+        if layout == "table":
+            return render(request, "users/components/public_profile_table.html", context)
+        return render(request, "users/components/public_profile_grid.html", context)
+
+    return render(request, "users/public_profile.html", context)
+
+
+@login_not_required
+@require_GET
+def public_media_details(request, username, source, media_type, media_id, title):  # noqa: ARG001
+    """Display a read-only media detail page for a public profile."""
+    profile_user = get_object_or_404(User, username=username)
+    if not profile_user.public_profile:
+        raise Http404
+
+    media_metadata = services.get_media_metadata(media_type, media_id, source)
+
+    user_medias = BasicMedia.objects.filter_media_prefetch(
+        profile_user,
+        media_id,
+        media_type,
+        source,
+    )
+    current_instance = user_medias[0] if user_medias else None
+
+    # Enrich related items with user tracking data
+    if media_metadata.get("related"):
+        _fake_request = type("_R", (), {"user": profile_user})()
+        for section_name, related_items in media_metadata["related"].items():
+            if related_items:
+                media_metadata["related"][section_name] = (
+                    helpers.enrich_items_with_user_data(
+                        _fake_request, related_items, section_name,
+                    )
+                )
+
+    context = {
+        "profile_user": profile_user,
+        "media": media_metadata,
+        "media_type": media_type,
+        "user_medias": user_medias,
+        "current_instance": current_instance,
+    }
+    return render(request, "users/public_media_details.html", context)
+
+
+@login_not_required
+@require_GET
+def public_season_details(request, username, source, media_id, title, season_number):  # noqa: ARG001
+    """Display a read-only season detail page for a public profile."""
+    profile_user = get_object_or_404(User, username=username)
+    if not profile_user.public_profile:
+        raise Http404
+
+    tv_with_seasons_metadata = services.get_media_metadata(
+        "tv_with_seasons",
+        media_id,
+        source,
+        [season_number],
+    )
+    season_metadata = tv_with_seasons_metadata[f"season/{season_number}"]
+
+    user_medias = BasicMedia.objects.filter_media_prefetch(
+        profile_user,
+        media_id,
+        MediaTypes.SEASON.value,
+        source,
+        season_number=season_number,
+    )
+    current_instance = user_medias[0] if user_medias else None
+    episodes_in_db = current_instance.episodes.all() if current_instance else []
+
+    from app.providers import manual as manual_provider
+    if source == Sources.MANUAL.value:
+        season_metadata["episodes"] = manual_provider.process_episodes(
+            season_metadata,
+            episodes_in_db,
+        )
+    else:
+        season_metadata["episodes"] = tmdb.process_episodes(
+            season_metadata,
+            episodes_in_db,
+        )
+
+    # Enrich related items with user tracking data
+    if season_metadata.get("related"):
+        _fake_request = type("_R", (), {"user": profile_user})()
+        for section_name, related_items in season_metadata["related"].items():
+            if related_items:
+                season_metadata["related"][section_name] = (
+                    helpers.enrich_items_with_user_data(
+                        _fake_request, related_items, section_name,
+                    )
+                )
+
+    context = {
+        "profile_user": profile_user,
+        "media": season_metadata,
+        "tv": tv_with_seasons_metadata,
+        "media_type": MediaTypes.SEASON.value,
+        "user_medias": user_medias,
+        "current_instance": current_instance,
+    }
+    return render(request, "users/public_media_details.html", context)

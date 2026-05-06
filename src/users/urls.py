@@ -35,4 +35,19 @@ urlpatterns = [
         views.update_plex_usernames,
         name="update_plex_usernames",
     ),
+    path(
+        "profile/<str:username>/",
+        views.public_profile,
+        name="public_profile",
+    ),
+    path(
+        "profile/<str:username>/details/<source:source>/<media_type:media_type>/<str:media_id>/<str:title>",
+        views.public_media_details,
+        name="public_media_details",
+    ),
+    path(
+        "profile/<str:username>/details/<source:source>/tv/<str:media_id>/<str:title>/season/<int:season_number>",
+        views.public_season_details,
+        name="public_season_details",
+    ),
 ]

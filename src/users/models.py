@@ -399,6 +399,12 @@ class User(AbstractUser):
         help_text="Comma-separated list of Plex usernames for webhook matching",
     )
 
+    # Public profile
+    public_profile = models.BooleanField(
+        default=False,
+        help_text="Allow anyone to view your media tracking profile",
+    )
+
     class Meta:
         """Meta options for the model."""
 

@@ -67,7 +67,8 @@ def date_format(datetime, user):
     if not datetime:
         return None
     local_dt = timezone.localtime(datetime)
-    return formats.date_format(local_dt, user.date_format)
+    fmt = getattr(user, "date_format", "N j, Y")
+    return formats.date_format(local_dt, fmt)
 
 
 @register.filter
@@ -79,7 +80,8 @@ def iso_date_format(value, user):
     if isinstance(value, str):
         date_obj = parse_date(value)
         if date_obj:
-            return formats.date_format(date_obj, user.date_format)
+            fmt = getattr(user, "date_format", "N j, Y")
+            return formats.date_format(date_obj, fmt)
 
     return value
 
@@ -90,7 +92,8 @@ def time_format(datetime, user):
     if not datetime:
         return None
     local_dt = timezone.localtime(datetime)
-    return formats.time_format(local_dt, user.time_format)
+    fmt = getattr(user, "time_format", "H:i")
+    return formats.time_format(local_dt, fmt)
 
 
 @register.filter
@@ -106,10 +109,12 @@ def datetime_format(datetime, user):
     if not datetime:
         return None
     local_dt = timezone.localtime(datetime)
-    formatted_date = formats.date_format(local_dt, user.date_format)
+    date_fmt = getattr(user, "date_format", "N j, Y")
+    formatted_date = formats.date_format(local_dt, date_fmt)
 
     if settings.TRACK_TIME:
-        formatted_time = formats.time_format(local_dt, user.time_format)
+        time_fmt = getattr(user, "time_format", "H:i")
+        formatted_time = formats.time_format(local_dt, time_fmt)
         return f"{formatted_date} {formatted_time}"
     return formatted_date
 
@@ -199,6 +204,8 @@ def sources(media_type):
 @register.simple_tag
 def get_search_media_types(user):
     """Return available media types for search based on user preferences."""
+    if not hasattr(user, "get_enabled_media_types"):
+        return []
     enabled_types = user.get_enabled_media_types()
 
     # Filter and format the types for search
@@ -215,6 +222,8 @@ def get_search_media_types(user):
 @register.simple_tag
 def get_sidebar_media_types(user):
     """Return available media types for sidebar navigation based on user preferences."""
+    if not hasattr(user, "get_enabled_media_types"):
+        return []
     enabled_types = user.get_enabled_media_types()
 
     # Format the types for sidebar
@@ -255,8 +264,8 @@ def natural_day(datetime, user):
 
     local_dt = timezone.localtime(datetime)
     datetime_date = local_dt.date()
-    formatted_date = formats.date_format(local_dt, user.date_format)
-    formatted_time = formats.time_format(local_dt, user.time_format)
+    formatted_date = formats.date_format(local_dt, getattr(user, "date_format", "N j, Y"))
+    formatted_time = formats.time_format(local_dt, getattr(user, "time_format", "H:i"))
     days = (datetime_date - today).days
 
     if days == 0:
@@ -293,6 +302,41 @@ def media_url(media):
     return reverse(
         "media_details",
         kwargs={
+            "source": source,
+            "media_type": media_type,
+            "media_id": media_id,
+            "title": slug(title),
+        },
+    )
+
+
+@register.simple_tag
+def public_media_url(media, username):
+    """Return the public profile media URL for both metadata and model object cases."""
+    is_dict = isinstance(media, dict)
+
+    media_type = media["media_type"] if is_dict else media.media_type
+    source = media["source"] if is_dict else media.source
+    media_id = media["media_id"] if is_dict else media.media_id
+    title = media["title"] if is_dict else media.title
+
+    if media_type in [MediaTypes.SEASON.value, MediaTypes.EPISODE.value]:
+        season_number = media["season_number"] if is_dict else media.season_number
+        return reverse(
+            "public_season_details",
+            kwargs={
+                "username": username,
+                "source": source,
+                "media_id": media_id,
+                "title": slug(title),
+                "season_number": season_number,
+            },
+        )
+
+    return reverse(
+        "public_media_details",
+        kwargs={
+            "username": username,
             "source": source,
             "media_type": media_type,
             "media_id": media_id,
@@ -459,7 +503,7 @@ def show_media_score(rating, user):
     Returns:
         True if we should show the media score
     """
-    return rating is not None and (not user.hide_zero_rating or rating > 0)
+    return rating is not None and (not getattr(user, "hide_zero_rating", False) or rating > 0)
 
 
 @register.filter
